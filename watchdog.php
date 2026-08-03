@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Watchdog - Real-Time Malware Detection & Response
- * Description:       Real-time malware detection and response: external redirect blocker (MU plugin), SHA-256 file integrity, redirect analyzer, malware heuristics, quarantine, event timeline and email alerts.
+ * Description:       Real-time malware detection and response, SHA-256 file integrity, redirect analyzer, malware heuristics, quarantine, event timeline and email alerts.
  * Version:           3.4.6
  * Author:            Watchdog
  * Text Domain:       watchdog
