@@ -119,13 +119,18 @@
                 btn.classList.toggle('wd-tab-active', on);
                 btn.setAttribute('aria-selected', on ? 'true' : 'false');
             });
+            var panel = null;
+            document.querySelectorAll('[data-wd-panel-group="' + group + '"]').forEach(function (p) {
+                var on = p.getAttribute('data-wd-panel') === key;
+                p.style.display = on ? '' : 'none';
+                if (on) {
+                    panel = p;
+                }
+            });
             if (table) {
+                table.parentElement.style.display = panel ? 'none' : '';
                 table.setAttribute('data-wd-tab', key);
                 applyTableFilter(table);
-            } else {
-                document.querySelectorAll('[data-wd-panel-group="' + group + '"]').forEach(function (panel) {
-                    panel.style.display = panel.getAttribute('data-wd-panel') === key ? '' : 'none';
-                });
             }
         }
 

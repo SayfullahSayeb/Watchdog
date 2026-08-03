@@ -245,7 +245,7 @@
 
 .wd-content.wrap {
     padding: 26px 28px 40px;
-    max-width: fit-content;
+    max-width: 1260px;
     width: 100%;
     margin: 0;
 }
@@ -690,15 +690,33 @@
 .wd-sev-mute { background: var(--wd-text-mute); color: #fff; }
 
 .wd-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
+    display: inline-block;
     padding: 2px 9px;
     border-radius: 999px;
     font-size: 11.5px;
     font-weight: 650;
     border: 1px solid var(--wd-border-strong);
     color: var(--wd-text-mid);    background: var(--wd-bg-soft);
+}
+
+.wd-sigs {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin: 8px 0 0 4px;
+    padding: 0;
+}
+
+.wd-sigs li {
+    margin: 0;
+    padding: 0;
+}
+
+.wd-sigs .wd-badge {
+    display: inline-flex;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 .wd-badge-critical { border-color: var(--wd-danger); background: var(--wd-danger-weak); color: var(--wd-danger); }
 .wd-badge-warning { border-color: var(--wd-warning); background: var(--wd-warning-weak); color: var(--wd-warning); }
@@ -826,6 +844,7 @@
     gap: 10px;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: space-between;
     margin-bottom: 12px;
 }
 
@@ -1297,10 +1316,13 @@
     color: var(--wd-text-mid);
 }
 
-.wd-file-list li .wd-file-meta {
-    font-family: var(--wd-font);
-    font-size: 12px;
-    color: var(--wd-text-mid);
+.wd-file-list li .wd-file-stamp {
+    color: var(--wd-text-mute);
+    flex: 0 0 64px;
+}
+
+.wd-file-list li:hover {
+    background: var(--wd-bg-hover);
 }
 
 .wd-file-list li.wd-file-detailed {
@@ -1310,46 +1332,23 @@
 
 .wd-file-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
-    gap: 8px;
+    gap: 6px 10px;
 }
 
-.wd-file-row .wd-file-path {
-    color: var(--wd-text);
+.wd-file-sigs {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.wd-file-sigs .wd-badge {
+    word-break: break-word;
 }
 
 .wd-file-row .wd-file-meta {
     margin-left: auto;
-}
-
-.wd-file-note {
-    padding: 4px 6px;
-    color: var(--wd-text-mid);
-    font-size: 12px;
-}
-
-.wd-pager {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 2px 0;
-    font-size: 12.5px;
-    color: var(--wd-text-mid);
-}
-
-.wd-pager-label {
-    flex: 1 1 auto;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-}
-
-.wd-file-list li .wd-file-stamp {
-    color: var(--wd-text-mute);
-    flex: 0 0 64px;
-}
-
-.wd-file-list li:hover {
-    background: var(--wd-bg-hover);
 }
 
 .wd-file-list-empty {
@@ -1939,20 +1938,17 @@
     min-width: 320px;
 }
 .wd-finding {
-    border: 1px solid var(--wd-border);
-    border-left: 4px solid var(--wd-border-strong);
-    border-radius: var(--wd-radius-sm);
-    margin-bottom: 10px;
-    overflow: hidden;
+    margin-bottom: 14px;
 }
 
 .wd-finding-head {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px;
+    padding: 9px 0;
     border: 0;
-    background: var(--wd-bg-card);
+    border-bottom: 1px solid var(--wd-border);
+    background: transparent;
     font-family: var(--wd-font);
     font-size: 13.5px;
     font-weight: 650;
@@ -1961,9 +1957,9 @@
 
 .wd-finding-ic {
     display: inline-flex;
-    width: 26px;
-    height: 26px;
-    flex: 0 0 26px;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
     border-radius: 7px;
     align-items: center;
     justify-content: center;
@@ -1979,7 +1975,7 @@
     font-variant-numeric: tabular-nums;
 }
 
-.wd-finding-body { padding: 0 14px 14px; }
+.wd-finding-body { padding: 10px 0 0; }
 .wd-finding-body .wd-file-list { max-height: none; }
 
 .wd-fac-critical { border-left-color: var(--wd-danger); }
@@ -2017,7 +2013,45 @@
     line-height: 1.5;
 }
 
+.wd-file-note {
+    padding: 4px 6px;
+    color: var(--wd-text-mid);
+    font-size: 12px;
+}
+
 @media (max-width: 480px) {
     .wd-scan-pct { font-size: 34px; }
     .wd-stages { grid-template-columns: 1fr; }
 }
+
+/* ---------------------------------------------------------------- font scale */
+.watch-shell { font-size: 14px; }
+
+.watch-shell .wd-table { font-size: 14px; }
+.watch-shell .wd-table th { font-size: 12px; letter-spacing: 0.6px; }
+.watch-shell .wd-table td { font-size: 14px; }
+
+.watch-shell .wd-file-list,
+.watch-shell .wd-file-list li { font-size: 13.5px; }
+.watch-shell .wd-file-list li .wd-file-meta { font-size: 13px; }
+
+.watch-shell .wd-code-pre,
+.watch-shell .wd-log-pre { font-size: 13px; }
+
+.watch-shell .wd-badge { font-size: 12px; }
+.watch-shell .wd-sev { font-size: 12px; }
+.watch-shell .wd-tab,
+.watch-shell .wd-tabs > .wd-tab { font-size: 14px; }
+.watch-shell .wd-scope-name { font-size: 13px; }
+
+.watch-shell input,
+.watch-shell select,
+.watch-shell textarea,
+.watch-shell button { font-size: 14px; }
+
+.watch-shell .wd-file-meta { font-size: 13px; }
+.watch-shell .wd-file-note { font-size: 13px; }
+.watch-shell .wd-file-follow { font-size: 13px; }
+.watch-shell .wd-field-help,
+.watch-shell .wd-find-clear p,
+.watch-shell .wd-page-sub { font-size: 13.5px; }

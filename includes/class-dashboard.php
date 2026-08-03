@@ -164,12 +164,6 @@ final class Dashboard {
         self::renderQuarantine($quarantine);
         echo '</section>';
 
-        echo '<section class="watchdog-tab" id="watchdog-tab-timeline" aria-labelledby="wd-title-timeline">';
-        echo '<h2 class="wd-page-title" id="wd-title-timeline">' . self::icon('activity') . ' Threat Logs</h2>';
-        echo '<p class="wd-page-sub">All detections, blocked redirects and scan events.</p>';
-        self::renderTimeline();
-        echo '</section>';
-
         echo '<section class="watchdog-tab" id="watchdog-tab-settings" aria-labelledby="wd-title-settings">';
         echo '<h2 class="wd-page-title" id="wd-title-settings">' . self::icon('sliders') . ' Settings</h2>';
         echo '<p class="wd-page-sub">Configure how Watchdog protects your site.</p>';
@@ -258,7 +252,6 @@ final class Dashboard {
             'scan'         => ['Scanner', 'search'],
             'verification' => ['Integrity', 'shield'],
             'quarantine'   => ['Quarantine', 'layers'],
-            'timeline'     => ['Threat Logs', 'activity'],
             'settings'     => ['Settings', 'sliders'],
         ];
 
@@ -868,23 +861,23 @@ final class Dashboard {
                 $html .= '<li><span class="wd-file-meta">… and ' . esc_html((string) count($items)) . ' more</span></li>';
                 break;
             }
-            $html .= '<li' . (is_array($detail) || is_string($detail) ? ' class="wd-file-detailed"' : '') . '>';
-            if (is_array($detail) || is_string($detail)) {
-                $html .= '<span class="wd-file-row"><span class="wd-file-path">' . esc_html($path) . '</span>';
-                if ($actionable) {
-                    $html .= '<span class="wd-file-meta">' . self::itemActions($path) . '</span>';
+            $html .= '<li class="wd-file-detailed">'
+                . '<span class="wd-file-row"><span class="wd-file-path">' . esc_html($path) . '</span>';
+            if (is_array($detail) && !empty($detail['signatures'])) {
+                $html .= '<span class="wd-file-sigs">';
+                foreach ($detail['signatures'] as $sig) {
+                    $html .= '<span class="wd-badge">' . esc_html($sig) . '</span>';
                 }
                 $html .= '</span>';
-                if (is_array($detail)) {
-                    $html .= self::fileDetailHtml($detail);
-                } elseif (is_string($detail)) {
-                    $html .= '<div class="wd-file-note">— ' . esc_html($detail) . '</div>';
-                }
-            } else {
-                $html .= '<span>' . esc_html($path) . '</span>';
-                if ($actionable) {
-                    $html .= '<span class="wd-file-meta">' . self::itemActions($path) . '</span>';
-                }
+            }
+            if ($actionable) {
+                $html .= '<span class="wd-file-meta">' . self::itemActions($path) . '</span>';
+            }
+            $html .= '</span>';
+            if (is_array($detail)) {
+                $html .= self::fileDetailHtml($detail);
+            } elseif (is_string($detail)) {
+                $html .= '<div class="wd-file-note">— ' . esc_html($detail) . '</div>';
             }
             $html .= '</li>';
         }
@@ -918,9 +911,6 @@ final class Dashboard {
                 );
             }
             $html .= '</ul></details>';
-        }
-        if (!empty($detail['signatures'])) {
-            $html .= '<div class="wd-badge" style="margin:4px 0 0 6px;">' . esc_html(implode('; ', $detail['signatures'])) . '</div>';
         }
         return $html;
     }
@@ -1144,55 +1134,109 @@ final class Dashboard {
      * Event timeline.
      */
     private static function renderTimeline(): void {
-        echo '<div class="wd-card">'
-            . '<div class="wd-card-head"><h3 class="wd-card-title">' . self::icon('activity') . ' All events</h3>'
-            . '<div class="wd-actions"><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">'
-            . '<input type="hidden" name="action" value="watchdog_export">'
-            . wp_nonce_field('watchdog_export_action', 'watchdog_export_nonce', true, false)
-            . '<button type="submit" class="button button-secondary">' . self::icon('download') . ' Export CSV</button>'
-            . '</form></div></div>';
-
         $events = Logger::query(200);
-        if (empty($events)) {
+
+        $last = (array) get_option('watchdog_last_scan', []);
+        $destinations = [];
+        foreach ($events as $event) {
+            if (($event['type'] ?? '') === 'redirect_blocked') {
+                $det = json_decode((string) ($event['details'] ?? ''), true);
+                $dest = is_array($det) && !empty($det['destination']) ? trim((string) $det['destination']) : '';
+                if ($dest !== '') {
+                    $destinations[$dest] = ($destinations[$dest] ?? 0) + 1;
+                }
+            }
+        }
+        $domains = isset($last['domains']) && is_array($last['domains']) ? $last['domains'] : [];
+        foreach ($domains as $host => $detail) {
+            if (!is_string($detail) || trim($detail) === '') {
+                continue;
+            }
+            $destinations[$detail] = ($destinations[$detail] ?? 0) + 1;
+        }
+        arsort($destinations);
+
+        if (empty($events) && $destinations === []) {
             echo '<div class="wd-empty">' . self::icon('check-big')
-                . '<strong>Nothing recorded</strong><p>Detections and blocks will appear here.</p></div>'
-                . '</div>';
+                . '<strong>Nothing recorded</strong><p>Detections and blocks will appear here.</p></div>';
             return;
         }
 
         echo '<div class="wd-table-controls">'
             . '<label class="wd-search">' . self::icon('search')
             . '<input type="search" placeholder="Filter events…" data-wd-search="#wd-events-table" aria-label="Filter security events"></label>'
-            . '</div>';
+            . '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">'
+            . '<input type="hidden" name="action" value="watchdog_export">'
+            . wp_nonce_field('watchdog_export_action', 'watchdog_export_nonce', true, false)
+            . '<button type="submit" class="button button-secondary">' . self::icon('download') . ' Export CSV</button>'
+            . '</form></div>';
 
         echo '<div class="wd-tabs wd-tabs-events" data-wd-tabgroup="events" data-wd-table="#wd-events-table" data-wd-default="critical">'
             . '<button type="button" class="wd-tab" data-wd-tab="critical">Critical</button>'
             . '<button type="button" class="wd-tab" data-wd-tab="warning">Warnings</button>'
             . '<button type="button" class="wd-tab" data-wd-tab="info">Informational</button>'
             . '<button type="button" class="wd-tab" data-wd-tab="notes">Notes</button>'
+            . '<button type="button" class="wd-tab" data-wd-tab="redirect">Redirect' . (count($destinations) > 0 ? ' (' . (int) count($destinations) . ')' : '') . '</button>'
             . '</div>';
 
-        echo '<div class="wd-table-wrap" style="max-height:560px;overflow:auto;">'
+        echo '<div class="wd-table-wrap">'
             . '<table class="wd-table" id="wd-events-table"><thead><tr>'
-            . '<th class="wd-sort">Time</th><th>Type</th><th class="wd-sort">Severity</th><th>Source</th><th class="wd-col-details">Details</th><th>IP</th><th>User</th>'
+            . '<th class="wd-sort">Time</th><th>Type</th><th>Source</th><th class="wd-col-details">Details</th>'
             . '</tr></thead><tbody>';
-        $colors = ['critical' => 'wd-danger', 'warning' => 'wd-warning', 'info' => 'wd-info'];
         $sevTab = ['critical' => 'critical', 'warning' => 'warning', 'info' => 'info', 'safe' => 'notes'];
+        $noiseSignatures = [
+            'JS: window/document.location',
+            'JS: window.open()',
+            'JS: history.pushState()',
+            'JS: history.replaceState()',
+            'JS: mobile detection (userAgent)',
+            'JS: mobile keywords',
+            'JS: String.fromCharCode()',
+            'JS: new Function()',
+        ];
         foreach ($events as $event) {
             $sevKey = (string) ($event['severity'] ?? 'safe');
             $tabKey = isset($sevTab[$sevKey]) ? $sevTab[$sevKey] : 'notes';
+            if (($event['type'] ?? '') === 'scan_finding') {
+                $det = json_decode((string) ($event['details'] ?? ''), true);
+                $sigs = isset($det['signatures']) && is_array($det['signatures']) ? $det['signatures'] : [];
+                if ($sigs !== [] && array_reduce($sigs, static function (bool $carry, string $s) use ($noiseSignatures): bool {
+                    return $carry && in_array($s, $noiseSignatures, true);
+                }, true)) {
+                    continue;
+                }
+            }
             echo '<tr data-sev="' . esc_attr((string) $tabKey) . '">'
                 . '<td style="white-space:nowrap;">' . esc_html(wp_date('Y-m-d H:i', strtotime((string) $event['event_time']))) . '</td>'
                 . '<td><code>' . esc_html((string) $event['type']) . '</code></td>'
-                . '<td><span class="wd-sev wd-sev-' . esc_attr($sevKey) . '">' . esc_html((string) $event['severity']) . '</span></td>'
                 . '<td><code>' . esc_html((string) $event['source']) . '</code></td>'
                 . '<td class="wd-col-details">' . self::renderDetailsCell($event['details'], (string) $event['source']) . '</td>'
-                . '<td>' . esc_html((string) $event['ip']) . '</td>'
-                . '<td>' . esc_html((string) $event['username']) . '</td>'
                 . '</tr>';
         }
-        echo '</tbody></table><div class="wd-table-empty" style="display:none;">No events match your filter.</div></div>'
-            . '</div>';
+        echo '</tbody></table><div class="wd-table-empty" style="display:none;">No events match your filter.</div></div>';
+
+        echo '<div class="wd-panel" data-wd-panel-group="events" data-wd-panel="redirect" style="display:none;">';
+        if ($destinations === []) {
+            echo '<div class="wd-empty">' . self::icon('check-big')
+                . '<strong>No redirects found</strong><p>External redirect destinations seen in scanned code appear here.</p></div>';
+        } else {
+            echo '<div class="wd-finding wd-fac-warning">'
+                . '<div class="wd-finding-head">'
+                . '<span class="wd-finding-ic">' . self::icon('ban') . '</span>'
+                . '<span class="wd-finding-title">Redirect destinations</span>'
+                . '<span class="wd-finding-count">' . (int) count($destinations) . '</span>'
+                . '</div>'
+                . '<div class="wd-finding-body wd-open"><ul class="wd-file-list" data-wd-paginate="20">';
+            foreach ($destinations as $dest => $count) {
+                $host = (string) wp_parse_url($dest, PHP_URL_HOST);
+                $label = $host !== '' ? $host : $dest;
+                echo '<li><span style="color:var(--wd-text-mid);">' . esc_html($label) . '</span>'
+                    . '<span class="wd-file-meta">' . (int) $count . '×</span>'
+                    . '<div class="wd-file-note">' . esc_html($dest) . '</div></li>';
+            }
+            echo '</ul></div></div>';
+        }
+        echo '</div>';
     }
 
     /**
@@ -1212,25 +1256,28 @@ final class Dashboard {
         if ($lines !== []) {
             $signatures = isset($data['signatures']) && is_array($data['signatures']) ? $data['signatures'] : [];
             $label = (string) ($data['label'] ?? '');
-            $out = '<details><summary>view</summary><div class="wd-code-view">';
-            if ($label !== '' || $signatures !== []) {
-                $out .= '<div class="wd-code-title">'
-                    . esc_html($label !== '' ? $label : implode(', ', array_slice($signatures, 0, 2)))
-                    . ($signatures !== [] ? ' <span class="wd-code-sig">' . esc_html(implode(' · ', $signatures)) . '</span>' : '')
-                    . '</div>';
+            $out = '';
+            if ($label !== '') {
+                $out .= '<div class="wd-code-title">' . esc_html($label) . '</div>';
             }
-            $out .= '<div class="wd-code-file">' . esc_html(basename($source !== '' ? $source : 'file')) . '</div>'
-                . '<pre class="wd-code-pre">';
+            if ($signatures !== []) {
+                $out .= '<div class="wd-file-sigs">';
+                foreach ($signatures as $sig) {
+                    $out .= '<span class="wd-badge">' . esc_html($sig) . '</span>';
+                }
+                $out .= '</div>';
+            }
+            $out .= '<pre class="wd-code-pre">';
             foreach ($lines as $hit) {
                 $out .= '<span class="wd-code-line"><span class="wd-code-no">' . esc_html((string) ($hit['line'] ?? '')) . '</span>'
                     . '<span class="wd-code-text">' . esc_html((string) ($hit['code'] ?? '')) . '</span></span>' . "\n";
             }
-            $out .= '</pre></div></details>';
+            $out .= '</pre>';
             return $out;
         }
-        $out = '<details><summary>view</summary><pre class="wd-log-pre">';
+        $out = '<pre class="wd-log-pre">';
         $out .= esc_html(wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        $out .= '</pre></details>';
+        $out .= '</pre>';
         return $out;
     }
 
