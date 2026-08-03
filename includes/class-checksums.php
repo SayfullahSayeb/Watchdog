@@ -336,22 +336,22 @@ final class Checksums {
         }
 
         // 2) Verified package: compare against the official hash map.
-        //    A 'clean' package without a map is also accepted; a
-        //    'modified' one never is — we cannot prove the file is
-        //    untouched official code.
+        //    The map is REQUIRED — a 'clean' status without a map must
+        //    not trust files, because files outside the official zip
+        //    (an injected backdoor next to a verified plugin) would
+        //    otherwise be treated as known-good. A 'modified' result is
+        //    never trusted either: we cannot prove the file is untouched
+        //    official code.
         $origin = \Watchdog\RedirectEngine::originOf($absPath);
         if ($origin['plugin'] !== '') {
             $dir = str_replace('\\', '/', WP_PLUGIN_DIR) . '/' . $origin['plugin'] . '/';
             $relPath = strpos($absPath, $dir) === 0 ? substr($absPath, strlen($dir)) : '';
             if ($relPath !== '') {
                 $map = get_transient('watchdog_pkgmap_plugin_' . $origin['plugin']);
-                if (is_array($map)) {
-                    return isset($map[$relPath])
-                        && is_string($map[$relPath])
-                        && hash_equals($map[$relPath], (string) $sha256);
-                }
-                $result = self::packageResult('plugin', $origin['plugin']);
-                return (($result['status'] ?? '') === 'clean');
+                return is_array($map)
+                    && isset($map[$relPath])
+                    && is_string($map[$relPath])
+                    && hash_equals($map[$relPath], (string) $sha256);
             }
             return false;
         }
@@ -360,13 +360,10 @@ final class Checksums {
             $relPath = strpos($absPath, $dir) === 0 ? substr($absPath, strlen($dir)) : '';
             if ($relPath !== '') {
                 $map = get_transient('watchdog_pkgmap_theme_' . $origin['theme']);
-                if (is_array($map)) {
-                    return isset($map[$relPath])
-                        && is_string($map[$relPath])
-                        && hash_equals($map[$relPath], (string) $sha256);
-                }
-                $result = self::packageResult('theme', $origin['theme']);
-                return (($result['status'] ?? '') === 'clean');
+                return is_array($map)
+                    && isset($map[$relPath])
+                    && is_string($map[$relPath])
+                    && hash_equals($map[$relPath], (string) $sha256);
             }
             return false;
         }

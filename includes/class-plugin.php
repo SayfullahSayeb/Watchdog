@@ -73,6 +73,7 @@ final class Plugin {
         RedirectGuard::writeMuPlugin();
         Scanner::saveBaseline();
         Cron::ensure();
+        self::queuePackageVerifications();
         self::markUpgraded();
     }
 
@@ -93,7 +94,19 @@ final class Plugin {
         self::installDefaults();
         RedirectGuard::writeMuPlugin();
         Cron::ensure();
+        self::queuePackageVerifications();
         self::markUpgraded();
+    }
+
+    /**
+     * Wordfence known-files equivalent: every installed plugin and theme
+     * is checksum-verified against WordPress.org in the background, so
+     * trust is derived from proven provenance instead of a maintained
+     * slug list. Runs at activation/upgrade and weekly (see Cron).
+     */
+    private static function queuePackageVerifications(): void {
+        LiveProtection::queueAllVerifications();
+        Cron::scheduleFastContinue();
     }
 
     /**

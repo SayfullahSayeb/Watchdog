@@ -71,7 +71,13 @@ final class RedirectEngine {
                 return self::result(self::EXPECTED, 'WordPress function destination', self::CONFIDENCE_LOW);
             }
             if ($obfuscated) {
-                return self::result(self::MALICIOUS, 'encoded or opaque destination (decoder hints present)', self::CONFIDENCE_HIGH);
+                if ($signature) {
+                    return self::result(self::MALICIOUS, 'encoded or opaque destination with malware signature', self::CONFIDENCE_HIGH);
+                }
+                if (self::sourceTrusted($origin) || $origin['core']) {
+                    return self::result(self::EXPECTED, 'encoded destination in verified source (bundler chunk-loader)', self::CONFIDENCE_LOW);
+                }
+                return self::result(self::SUSPICIOUS, 'encoded or opaque destination (decoder hints present)', self::CONFIDENCE_MEDIUM);
             }
             if (self::sourceTrusted($origin)) {
                 return self::result(self::EXPECTED, 'dynamic redirect from trusted source', self::CONFIDENCE_LOW);
@@ -124,14 +130,21 @@ final class RedirectEngine {
         }
 
         // --- External host from here on ---
-        // Aggravating factors escalate regardless of trust, but mobile
-        // gating alone only escalates from non-trusted sources (many
-        // legitimate plugins detect mobile devices).
-        if ($obfuscated || $signature) {
+        // Wordfence model: a plain external redirect is NOT malware —
+        // support links, upsells and oembed are normal plugin code. Only
+        // an actual malware signature, or obfuscation from an
+        // unverifiable source, escalate. Obfuscation in verified code is
+        // bundler noise (atob/fromCharCode chunk loaders) — expected.
+        if ($signature) {
+            return self::result(self::MALICIOUS, 'external redirect combined with malware signature', self::CONFIDENCE_HIGH);
+        }
+        if ($obfuscated) {
+            if (self::sourceTrusted($origin) || $origin['core']) {
+                return self::result(self::EXPECTED, 'obfuscated/encoded external redirect from verified source (bundler-style)', self::CONFIDENCE_LOW);
+            }
             return self::result(
                 self::MALICIOUS,
-                'external redirect combined with ' . ($obfuscated ? 'obfuscated/encoded code' : '')
-                . ($signature ? (($obfuscated ? ', ' : '') . 'malware signature') : ''),
+                'external redirect combined with obfuscated/encoded code',
                 self::CONFIDENCE_HIGH
             );
         }
@@ -139,7 +152,7 @@ final class RedirectEngine {
             if (self::sourceTrusted($origin)) {
                 return self::result(self::SUSPICIOUS, 'mobile-gated redirect from trusted source', self::CONFIDENCE_LOW);
             }
-            return self::result(self::MALICIOUS, 'external redirect combined with mobile gating', self::CONFIDENCE_HIGH);
+            return self::result(self::SUSPICIOUS, 'external redirect combined with mobile gating', self::CONFIDENCE_MEDIUM);
         }
         if (self::sourceTrusted($origin)) {
             return self::result(self::EXPECTED, 'redirect from trusted source', self::CONFIDENCE_LOW);
@@ -160,15 +173,15 @@ final class RedirectEngine {
             }
             if (Trust::originUnknown($origin)) {
                 return self::result(
-                    self::MALICIOUS,
-                    'external redirect from unknown ' . ($origin['plugin'] !== '' ? 'plugin: ' . $origin['plugin'] : 'theme: ' . $origin['theme']),
-                    self::CONFIDENCE_HIGH
+                    self::SUSPICIOUS,
+                    'external redirect from unverified ' . ($origin['plugin'] !== '' ? 'plugin: ' . $origin['plugin'] : 'theme: ' . $origin['theme']),
+                    self::CONFIDENCE_MEDIUM
                 );
             }
             return self::result(
-                self::MALICIOUS,
+                self::SUSPICIOUS,
                 'external redirect from untrusted source (' . ($origin['plugin'] !== '' ? 'plugin: ' . $origin['plugin'] : 'theme: ' . $origin['theme']) . ')',
-                self::CONFIDENCE_MEDIUM
+                self::CONFIDENCE_LOW
             );
         }
         return self::result(self::SUSPICIOUS, 'external redirect from unknown source', self::CONFIDENCE_LOW);

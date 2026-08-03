@@ -648,6 +648,23 @@ final class Scanner {
         }
 
         $result['signatures'] = Heuristics::scan($content, $ext);
+
+        // Wordfence known-file gate: a file whose sha256 matches an
+        // official WordPress.org package is clean by definition — skip
+        // heuristic AND redirect analysis entirely, so bundler noise
+        // (webpack `new Function` runtime, atob chunk loaders, upsell
+        // location.href links) never becomes a finding. Only a hard
+        // critical signature (webshell, eval(request), malware domain)
+        // survives: genuine malware is never hidden. Path-trusted core
+        // files are NOT gated here — a modified core file is a real
+        // signal and the checksum engine reports it separately.
+        if (class_exists('Watchdog\Checksums') && Checksums::knownGoodFile($path, $hash)) {
+            if (!Heuristics::hasCriticalSignature($result['signatures'])) {
+                $result['severity'] = 'safe';
+                return $result;
+            }
+        }
+
         $classification = Heuristics::classify($result['signatures']);
         $severity = $classification['sev'];
         $label = $classification['label'];
@@ -725,18 +742,16 @@ final class Scanner {
             }
         }
 
-        // Known-good suppression (Wordfence model) — final clamp after
-        // all sources (heuristics, redirect analyzer, execution context)
-        // have merged. A hash-verified official package file is clean by
-        // definition; path-trusted core files (wp-admin/, wp-includes/,
-        // root wp-*.php) are too — the checksum engine reports *modified*
-        // core files separately. Escalated verdicts are pattern/context
-        // collisions (moxie.js atob+mobile, plupload location usage,
-        // webpack new Function() runtime, oembed hidden iframes) and only
+        // Path-trusted core fallback (Wordfence model): files inside the
+        // official core tree are clean by definition — the checksum
+        // engine reports *modified* core files separately. Hash-verified
+        // package files were already returned as safe above. Escalated
+        // verdicts on core files are pattern/context collisions
+        // (moxie.js atob+mobile, plupload location usage, webpack
+        // new Function() runtime, oembed hidden iframes) and only
         // a genuine hard critical signature (webshell, eval(request),
         // malware domain) survives this clamp.
-        if (class_exists('Watchdog\Checksums')
-            && (Checksums::knownGoodFile($path, $hash) || Checksums::coreTreeTrust($path))
+        if (class_exists('Watchdog\Checksums') && Checksums::coreTreeTrust($path)
             && $severity !== 'info'
             && $severity !== 'safe'
             && !Heuristics::hasCriticalSignature($result['signatures'])) {
@@ -935,6 +950,19 @@ final class Scanner {
         $pathNorm = str_replace('\\', '/', $path);
         if ($pluginRoot !== '' && strpos($pathNorm . '/', $pluginRoot . '/') === 0) {
             return true;
+        }
+
+        // Skip the generated MU redirect guard and its version backups:
+        // it contains the deny list (ushort.company ...), Location header
+        // handling and detection patterns as string literals, so scanning
+        // it flags watchdog's own defense file (Wordfence excludes its
+        // own files the same way).
+        $muDir = str_replace('\\', '/', (defined('WP_CONTENT_DIR') ? WP_CONTENT_DIR : (dirname($pluginRoot) . '/wp-content')) . '/mu-plugins/');
+        if (strpos($pathNorm . '/', $muDir) === 0) {
+            $name = basename($pathNorm);
+            if ($name === 'security-guard.php' || strpos($name, 'security-guard.php.bak-') === 0) {
+                return true;
+            }
         }
 
         $parts = explode(DIRECTORY_SEPARATOR, $path);

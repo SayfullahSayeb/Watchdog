@@ -826,7 +826,6 @@ final class ExecutionContext {
     private static function classifyRedirect(array $primitive, string $dest, bool $resolved, bool $obfuscated, array $exec, array $context, bool $conditional, bool $mobileGated, string $conditionText, string $path, string $lang): ?array {
         $origin = RedirectEngine::originOf($path);
         $trusted = self::sourceTrusted($origin);
-        $unknown = Trust::originUnknown($origin);
 
         $destFlags = self::destFlags($dest, $lang);
         $internal = (bool) $destFlags['internal'];
@@ -891,6 +890,57 @@ final class ExecutionContext {
             );
         }
 
+        // --- Verified (official/trusted) sources: external redirects are
+        // normal code — support links, upsells, oembed, bundler chunk
+        // loaders. Wordfence never flags them. Obfuscation inside a
+        // verified package is minified-bundle noise (atob/fromCharCode
+        // is ubiquitous in webpack output), so it stays an inspectable
+        // warning instead of an accusation. ---
+        if ($trusted) {
+            if ($obfuscated) {
+                return self::buildResult(
+                    RedirectEngine::SUSPICIOUS,
+                    'warning',
+                    self::CONFIDENCE_MEDIUM,
+                    'Obfuscated external redirect from a verified source (' . $exec['trigger'] . ')',
+                    $primitive,
+                    $exec,
+                    $context,
+                    $conditional,
+                    $mobileGated,
+                    60,
+                    75,
+                    40,
+                    55,
+                    $dest,
+                    $resolved,
+                    $obfuscated,
+                    $origin
+                );
+            }
+            return self::buildResult(
+                RedirectEngine::EXPECTED,
+                'info',
+                self::CONFIDENCE_LOW,
+                'External redirect from a verified source (' . $exec['trigger'] . ')',
+                $primitive,
+                $exec,
+                $context,
+                $conditional,
+                $mobileGated,
+                0,
+                0,
+                0,
+                0,
+                $dest,
+                $resolved,
+                $obfuscated,
+                $origin
+            );
+        }
+
+        // --- Unverified sources from here on ---
+
         if ($mobileGated) {
             if ($never) {
                 return self::buildResult(
@@ -913,10 +963,31 @@ final class ExecutionContext {
                     $origin
                 );
             }
+            if ($obfuscated) {
+                return self::buildResult(
+                    RedirectEngine::MALICIOUS,
+                    'critical',
+                    self::CONFIDENCE_HIGH,
+                    'Obfuscated automatic external redirect gated by mobile detection (matchMedia/userAgent)',
+                    $primitive,
+                    $exec,
+                    $context,
+                    $conditional,
+                    $mobileGated,
+                    100,
+                    95,
+                    40,
+                    100,
+                    $dest,
+                    $resolved,
+                    $obfuscated,
+                    $origin
+                );
+            }
             return self::buildResult(
-                RedirectEngine::MALICIOUS,
-                'critical',
-                self::CONFIDENCE_CRITICAL,
+                RedirectEngine::SUSPICIOUS,
+                'warning',
+                self::CONFIDENCE_MEDIUM,
                 'Automatic external redirect gated by mobile detection (matchMedia/userAgent)',
                 $primitive,
                 $exec,
@@ -924,9 +995,9 @@ final class ExecutionContext {
                 $conditional,
                 $mobileGated,
                 100,
-                95,
-                $obfuscated ? 40 : 0,
-                100,
+                90,
+                0,
+                70,
                 $dest,
                 $resolved,
                 $obfuscated,
@@ -957,12 +1028,11 @@ final class ExecutionContext {
         }
 
         if ($interaction) {
-            $high = $unknown || !$trusted;
             return self::buildResult(
-                RedirectEngine::MALICIOUS,
-                'critical',
-                $high ? self::CONFIDENCE_HIGH : self::CONFIDENCE_MEDIUM,
-                'External redirect after user interaction from ' . ($unknown ? 'an unknown source' : 'a known source'),
+                RedirectEngine::SUSPICIOUS,
+                'warning',
+                self::CONFIDENCE_MEDIUM,
+                'External redirect after user interaction from an unverified source',
                 $primitive,
                 $exec,
                 $context,
@@ -971,7 +1041,7 @@ final class ExecutionContext {
                 10,
                 75,
                 $obfuscated ? 40 : 0,
-                $high ? 70 : 45,
+                55,
                 $dest,
                 $resolved,
                 $obfuscated,
@@ -980,10 +1050,31 @@ final class ExecutionContext {
         }
 
         if ($execution === 'immediate' || $execution === 'iife' || $execution === 'timer' || $execution === 'interval' || $execution === 'raf') {
+            if ($obfuscated) {
+                return self::buildResult(
+                    RedirectEngine::MALICIOUS,
+                    'critical',
+                    self::CONFIDENCE_CRITICAL,
+                    'Automatic obfuscated external redirect: ' . $exec['trigger'] . ' — no user interaction required',
+                    $primitive,
+                    $exec,
+                    $context,
+                    $conditional,
+                    $mobileGated,
+                    100,
+                    90,
+                    40,
+                    100,
+                    $dest,
+                    $resolved,
+                    $obfuscated,
+                    $origin
+                );
+            }
             return self::buildResult(
-                RedirectEngine::MALICIOUS,
-                'critical',
-                self::CONFIDENCE_CRITICAL,
+                RedirectEngine::SUSPICIOUS,
+                'warning',
+                self::CONFIDENCE_MEDIUM,
                 'Automatic external redirect: ' . $exec['trigger'] . ' — no user interaction required',
                 $primitive,
                 $exec,
@@ -992,8 +1083,8 @@ final class ExecutionContext {
                 $mobileGated,
                 100,
                 90,
-                $obfuscated ? 40 : 0,
-                100,
+                0,
+                65,
                 $dest,
                 $resolved,
                 $obfuscated,
@@ -1023,34 +1114,11 @@ final class ExecutionContext {
             );
         }
 
-        $downgrade = $trusted && !$mobileGated && !$obfuscated;
-        if ($downgrade && !in_array($execution, ['immediate', 'iife', 'timer', 'interval', 'raf'], true)) {
-            return self::buildResult(
-                RedirectEngine::MALICIOUS,
-                'warning',
-                self::CONFIDENCE_MEDIUM,
-                'External redirect from a trusted source (' . $exec['trigger'] . ')',
-                $primitive,
-                $exec,
-                $context,
-                $conditional,
-                $mobileGated,
-                60,
-                75,
-                $obfuscated ? 40 : 0,
-                55,
-                $dest,
-                $resolved,
-                $obfuscated,
-                $origin
-            );
-        }
-
         if ($automatic) {
             return self::buildResult(
-                RedirectEngine::MALICIOUS,
-                'critical',
-                self::CONFIDENCE_HIGH,
+                RedirectEngine::SUSPICIOUS,
+                'warning',
+                self::CONFIDENCE_MEDIUM,
                 'Automatic external redirect (' . $exec['trigger'] . ')',
                 $primitive,
                 $exec,
@@ -1060,7 +1128,7 @@ final class ExecutionContext {
                 70,
                 75,
                 $obfuscated ? 40 : 0,
-                85,
+                60,
                 $dest,
                 $resolved,
                 $obfuscated,

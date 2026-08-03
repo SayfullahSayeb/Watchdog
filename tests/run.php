@@ -579,10 +579,10 @@ t('redirect: monitor-only mode reflects the option', function (): void {
     ok(!RedirectEngine::monitorOnly(), 'should be off');
 });
 
-t('redirect: external redirect from unknown plugin is malicious', function (): void {
+t('redirect: plain external redirect from unknown plugin is suspicious, not malicious', function (): void {
     $file = WP_PLUGIN_DIR . '/mystery-plugin/index.php';
     $r = RedirectEngine::classify(['dest' => 'https://evil.example.net/steal', 'method' => 'href', 'line' => 1], $file);
-    eq($r['class'], RedirectEngine::MALICIOUS, 'class');
+    eq($r['class'], RedirectEngine::SUSPICIOUS, 'class');
 });
 
 t('redirect: external redirect from trusted plugin is expected', function (): void {
@@ -599,24 +599,36 @@ t('redirect: external redirect from uploads is suspicious', function (): void {
     eq($r['class'], RedirectEngine::SUSPICIOUS, 'class');
 });
 
-t('redirect: obfuscated external destination is malicious', function (): void {
+t('redirect: obfuscated external destination from unknown source is malicious', function (): void {
     $r = RedirectEngine::classify([
         'dest' => 'https://evil.example.net/x',
         'method' => 'href',
         'arg' => wd_payload(11) . '("aGVsbG8=")',
         'line' => 1,
-    ], ABSPATH . 'index.php');
+    ], WP_PLUGIN_DIR . '/unknown-thing/index.php');
     eq($r['class'], RedirectEngine::MALICIOUS, 'class');
 });
 
-t('redirect: mobile-gated external from unknown source is malicious', function (): void {
+t('redirect: obfuscated external destination in verified source is expected', function (): void {
+    Trust::set('verified-thing', Trust::OFFICIAL, 'plugin');
+    $r = RedirectEngine::classify([
+        'dest' => 'https://example.net/x',
+        'method' => 'href',
+        'arg' => wd_payload(11) . '("aGVsbG8=")',
+        'line' => 1,
+    ], WP_PLUGIN_DIR . '/verified-thing/index.php');
+    eq($r['class'], RedirectEngine::EXPECTED, 'class');
+    Trust::set('verified-thing', Trust::UNKNOWN, 'plugin');
+});
+
+t('redirect: mobile-gated external from unknown source is suspicious', function (): void {
     $r = RedirectEngine::classify([
         'dest' => 'https://evil.example.net/x',
         'method' => 'href',
         'mobile' => true,
         'line' => 1,
     ], WP_PLUGIN_DIR . '/other-plugin/index.php');
-    eq($r['class'], RedirectEngine::MALICIOUS, 'class');
+    eq($r['class'], RedirectEngine::SUSPICIOUS, 'class');
 });
 
 t('redirect: mobile-gated external from trusted source is suspicious', function (): void {
@@ -638,9 +650,16 @@ t('redirect: unresolved destination from trusted source is expected', function (
     Trust::set('dyn-plugin', Trust::UNKNOWN, 'plugin');
 });
 
-t('redirect: unresolved obfuscated destination is malicious', function (): void {
-    $r = RedirectEngine::classify(['dest' => '', 'method' => 'header', 'arg' => wd_payload(11) . '("eA==")', 'line' => 3], ABSPATH . 'index.php');
-    eq($r['class'], RedirectEngine::MALICIOUS, 'class');
+t('redirect: unresolved obfuscated destination from unknown source is suspicious', function (): void {
+    $r = RedirectEngine::classify(['dest' => '', 'method' => 'header', 'arg' => wd_payload(11) . '("eA==")', 'line' => 3], WP_PLUGIN_DIR . '/unknown-thing/index.php');
+    eq($r['class'], RedirectEngine::SUSPICIOUS, 'class');
+});
+
+t('redirect: unresolved obfuscated destination from trusted source is expected', function (): void {
+    Trust::set('dyn-plugin', Trust::TRUSTED, 'plugin');
+    $r = RedirectEngine::classify(['dest' => '', 'method' => 'header', 'arg' => wd_payload(11) . '("eA==")', 'line' => 3], WP_PLUGIN_DIR . '/dyn-plugin/index.php');
+    eq($r['class'], RedirectEngine::EXPECTED, 'class');
+    Trust::set('dyn-plugin', Trust::UNKNOWN, 'plugin');
 });
 
 t('redirect: origin detection for plugin paths', function (): void {

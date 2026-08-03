@@ -136,6 +136,10 @@ final class Cron {
         if (Scanner::scanLocked()) {
             return;
         }
+        // Wordfence known-files model: re-verify every installed package
+        // against WordPress.org weekly so trust stays checksum-proven and
+        // verified files keep being skipped by the scanner.
+        LiveProtection::queueAllVerifications();
         Scanner::runScan('deep');
         Logger::prune(180);
         FilesIndex::purgeStale(60);

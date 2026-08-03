@@ -90,6 +90,22 @@ wp-optimize';
             return self::normalize($map[$slug]);
         }
 
+        // Verification results (Wordfence known-files equivalent) derive
+        // trust from WordPress.org itself, not from a maintained list:
+        // a package checksum-verified against the official zip — or a
+        // known WP.org package at a non-latest version — is official by
+        // definition. This covers themes automatically, which the static
+        // plugin list never could. A 'modified' package is deliberately
+        // NOT trusted here: its files can no longer be proven untouched
+        // official code and the checksum engine reports it separately.
+        if (class_exists('Watchdog\Checksums')) {
+            $result = Checksums::packageResult($kind, $slug);
+            $status = (string) ($result['status'] ?? '');
+            if ($status === 'clean' || $status === 'version-mismatch') {
+                return self::OFFICIAL;
+            }
+        }
+
         if ($kind === 'theme') {
             return self::UNKNOWN; // themes are only trusted explicitly
         }
