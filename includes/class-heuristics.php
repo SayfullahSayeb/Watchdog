@@ -279,6 +279,22 @@ final class Heuristics {
     }
 
     /**
+     * Signature names that are purely informational (redirect primitives,
+     * mobile detection, decoding helpers, common embeddable domains).
+     * These never escalate severity and clutter the scan results —
+     * the UI hides them so only meaningful warnings/criticals are shown.
+     */
+    public static function noiseSignatures(): array {
+        $names = [];
+        foreach (self::patterns() as $pattern) {
+            if (($pattern['sev'] ?? '') === 'info') {
+                $names[] = $pattern['name'];
+            }
+        }
+        return $names;
+    }
+
+    /**
      * True when any matched pattern is a hard critical signature
      * (eval(request), backdoor, shell_exec, malicious domain, …).
      */
