@@ -759,6 +759,29 @@ final class Scanner {
             $label = null;
         }
 
+        // Attach the source snippet around each flagged line so the
+        // scan-results UI can show exactly what code triggered the
+        // verdict, instead of a bare reason string.
+        $snippetLines = null;
+        foreach ($redirects as $k => $finding) {
+            if (empty($finding['line']) || isset($finding['code'])) {
+                continue;
+            }
+            if ($snippetLines === null) {
+                $snippetLines = explode("\n", $content);
+            }
+            $redirects[$k]['code'] = self::codeSnippet($snippetLines, (int) $finding['line']);
+        }
+        foreach ($expected as $k => $finding) {
+            if (empty($finding['line']) || isset($finding['code'])) {
+                continue;
+            }
+            if ($snippetLines === null) {
+                $snippetLines = explode("\n", $content);
+            }
+            $expected[$k]['code'] = self::codeSnippet($snippetLines, (int) $finding['line']);
+        }
+
         $result['redirects'] = $redirects;
         $result['expected'] = $expected;
         $result['severity'] = $severity === '' ? ($expected ? 'info' : 'safe') : $severity;
@@ -766,6 +789,31 @@ final class Scanner {
         $result['label'] = $label;
 
         return $result;
+    }
+
+    /**
+     * Line-numbered source snippet around a flagged line (up to 3 lines,
+     * capped length) for the scan-results UI.
+     *
+     * @param array<int, string> $lines file content split on "\n"
+     * @param int                $line  1-based flagged line
+     */
+    private static function codeSnippet(array $lines, int $line): string {
+        $max = count($lines);
+        if ($line < 1 || $line > $max) {
+            return '';
+        }
+        $from = max(1, $line - 1);
+        $to = min($max, $line + 1);
+        $out = [];
+        foreach (range($from, $to) as $n) {
+            $text = rtrim($lines[$n - 1]);
+            if (strlen($text) > 180) {
+                $text = substr($text, 0, 177) . '…';
+            }
+            $out[] = str_pad((string) $n, 4, ' ', STR_PAD_LEFT) . ': ' . $text;
+        }
+        return implode("\n", $out);
     }
 
     /**

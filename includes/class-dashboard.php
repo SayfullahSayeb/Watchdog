@@ -656,6 +656,29 @@ final class Dashboard {
         }
         arsort($destinations);
 
+        // File:line sources for each destination, so the redirect tab
+        // shows WHERE every redirect was detected, not just the URL.
+        $destSources = [];
+        foreach (['malware', 'suspicious', 'info'] as $group) {
+            $items = isset($last[$group]) && is_array($last[$group]) ? $last[$group] : [];
+            foreach ($items as $path => $detail) {
+                if (!is_array($detail) || empty($detail['redirects'])) {
+                    continue;
+                }
+                foreach ($detail['redirects'] as $finding) {
+                    $d = isset($finding['dest']) && is_string($finding['dest']) && $finding['dest'] !== ''
+                        ? trim($finding['dest'])
+                        : '';
+                    if ($d === '') {
+                        continue;
+                    }
+                    $line = (int) ($finding['line'] ?? 0);
+                    $src = str_replace(ABSPATH, '', $path) . ($line > 0 ? ':' . $line : '');
+                    $destSources[$d][$src] = ($destSources[$d][$src] ?? 0) + 1;
+                }
+            }
+        }
+
         $expected = (int) ($last['expected'] ?? 0);
         if ($expected > 0) {
             echo '<p class="wd-scan-expect">' . self::icon('check')
@@ -773,14 +796,30 @@ final class Dashboard {
                 . '<span class="wd-finding-ic">' . self::icon('ban') . '</span>'
                 . '<span class="wd-finding-title">Redirect destinations</span>'
                 . '<span class="wd-finding-count">' . (int) count($destinations) . '</span>'
+                . '<span class="wd-sev wd-sev-warning">warning</span>'
                 . '</div>'
                 . '<div class="wd-finding-body wd-open"><ul class="wd-file-list" data-wd-paginate="20">';
             foreach ($destinations as $dest => $count) {
                 $host = (string) wp_parse_url($dest, PHP_URL_HOST);
                 $label = $host !== '' ? $host : $dest;
-                $tab['redirect'] .= '<li><span style="color:var(--wd-text-mid);">' . esc_html($label) . '</span>'
-                    . '<span class="wd-file-meta">' . (int) $count . '×</span>'
-                    . '<div class="wd-file-note">' . esc_html($dest) . '</div></li>';
+                $sources = isset($destSources[$dest]) ? $destSources[$dest] : [];
+                $srcHtml = '';
+                if ($sources !== []) {
+                    arsort($sources);
+                    $shown = 0;
+                    foreach ($sources as $src => $n) {
+                        if ($shown++ >= 5) {
+                            $srcHtml .= '<div class="wd-file-note">… and ' . esc_html((string) (count($sources) - 5)) . ' more</div>';
+                            break;
+                        }
+                        $srcHtml .= '<div class="wd-file-note">' . esc_html($src) . ($n > 1 ? ' — ' . (int) $n . '×' : '') . '</div>';
+                    }
+                }
+                $tab['redirect'] .= '<li class="wd-file-detailed">'
+                    . '<span class="wd-file-row"><span class="wd-file-path">' . esc_html($label) . '</span>'
+                    . '<span class="wd-file-meta">' . (int) $count . '×</span></span>'
+                    . '<div class="wd-file-note">' . esc_html($dest) . '</div>'
+                    . $srcHtml . '</li>';
             }
             $tab['redirect'] .= '</ul></div></div>';
         }
@@ -809,7 +848,6 @@ final class Dashboard {
             . '</div>'
             . '<div class="wd-finding-body wd-open"><ul class="wd-file-list" data-wd-paginate="20">';
         $i = 0;
-        $noise = Heuristics::noiseSignatures();
         foreach ($items as $path => $detail) {
             if ($i++ >= 500) {
                 $html .= '<li><span class="wd-file-meta">… and ' . esc_html((string) count($items)) . ' more</span></li>';
@@ -817,16 +855,6 @@ final class Dashboard {
             }
             $html .= '<li class="wd-file-detailed">'
                 . '<span class="wd-file-row"><span class="wd-file-path">' . esc_html($path) . '</span>';
-            if (is_array($detail) && !empty($detail['signatures'])) {
-                $sigs = array_values(array_diff((array) $detail['signatures'], $noise));
-                if ($sigs !== []) {
-                    $html .= '<span class="wd-file-sigs">';
-                    foreach ($sigs as $sig) {
-                        $html .= '<span class="wd-badge">' . esc_html($sig) . '</span>';
-                    }
-                    $html .= '</span>';
-                }
-            }
             if ($actionable) {
                 $html .= '<span class="wd-file-meta">' . self::itemActions($path) . '</span>';
             }
@@ -857,14 +885,16 @@ final class Dashboard {
                 $class = !empty($finding['class']) ? strtoupper((string) $finding['class']) : '';
                 $reason = !empty($finding['reason']) ? $finding['reason'] : ($finding['note'] ?? '');
                 $confidence = !empty($finding['confidence']) ? $finding['confidence'] : '';
+                $snippet = !empty($finding['code']) ? '<pre class="wd-code"><code>' . esc_html((string) $finding['code']) . '</code></pre>' : '';
                 $html .= sprintf(
-                    '<li><span class="wd-file-follow"><strong>%s</strong> %s → %s (line %d, %s) — %s</span></li>',
+                    '<li><span class="wd-file-follow"><strong>%s</strong> %s → %s (line %d, %s) — %s</span>%s</li>',
                     esc_html($class),
                     esc_html((string) $finding['call']),
                     esc_html((string) $dest),
                     (int) ($finding['line'] ?? 0),
                     esc_html((string) $confidence),
-                    esc_html((string) $reason)
+                    esc_html((string) $reason),
+                    $snippet
                 );
             }
             $html .= '</ul></details>';

@@ -1266,18 +1266,21 @@
     gap: 6px 10px;
 }
 
-.wd-file-sigs {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 5px;
-}
-
-.wd-file-sigs .wd-badge {
-    word-break: break-word;
-}
-
 .wd-file-row .wd-file-meta {
     margin-left: auto;
+}
+
+.wd-code {
+    margin: 6px 0 2px 0;
+    padding: 6px 8px;
+    background: var(--wd-bg-inset);
+    border: 1px solid var(--wd-border);
+    border-radius: 6px;
+    font: 11.5px/1.55 ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace;
+    color: var(--wd-text-mid);
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
 }
 
 .wd-file-list-empty {
